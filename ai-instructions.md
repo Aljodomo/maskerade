@@ -5,7 +5,7 @@
 - **No comments.** Do not add docstrings, inline comments, or block comments to any code. Existing docstrings/comments should be left alone unless the code they describe is deleted.
 - **No git.** Do not run any git commands (commit, push, diff, log, etc.).
 - **Use `uv` for everything.** Package management, running scripts, adding dependencies — always use `uv`. Never use `pip`, `pip install`, `python -m`, or raw `python`. To run code: `uv run ...`. To add a dependency: `uv add ...`. To sync: `uv sync`.
-- **Chainlit dev server.** The app is started with `uv run chainlit run src/maskerade/demo.py -w`. Do not change this entrypoint.
+- **Chainlit dev server.** The app is started with `uv run chainlit run src/maskerade/app.py -w`. Do not change this entrypoint.
 Do not run tests.
 ---
 No git.
@@ -18,7 +18,7 @@ No git.
 ## Project Layout
 ```
 src/maskerade/
-├── demo.py              # Chainlit entrypoint — orchestrates the 3-step pipeline
+├── app.py               # Chainlit entrypoint — orchestrates the 3-step pipeline
 ├── anonymize.py         # Core anonymisation & de-anonymisation (span merging, placeholder assignment)
 ├── privacy_filter.py    # Primary NER: HuggingFace token-classification (openai/privacy-filter)
 ├── datafog_spacy.py     # Secondary NER: Datafog spaCy engine + entity mapping
@@ -32,7 +32,7 @@ When adding new functionality, create a new module rather than bloating an exist
 ## Architecture — The Three-Step Pipeline
 Every user message flows through three stages:
 1. **Anonymisation** (`anonymize_text`) — Dual-NER detection (OpenAI privacy-filter + Datafog spaCy), span merging, coreference resolution against full un-redacted history, placeholder assignment via `AnonymizerState`.
-2. **LLM Invocation** (`invokeLLM`) — Anonymised text sent to DeepSeek via LangChain. Chat history maintained in anonymised form using LangGraph `add_messages`.
+2. **LLM Invocation** (`invoke_llm`) — Anonymised text sent to DeepSeek via LangChain. Chat history maintained in anonymised form using LangGraph `add_messages`.
 3. **De-anonymisation** (`deanonymize_text`) — Reverse placeholder lookup to restore original values.
 ### Two Parallel Chat Histories
 - `messages` — anonymised history sent to the LLM (user + assistant messages, all anonymised).

@@ -1,4 +1,4 @@
-from maskerade.datafog_spacy import spacy_scan_text, map_datafog_entity_to_privacy_span
+from maskerade.datafog_spacy import spacy_scan_text, _map_datafog_entity_to_privacy_span
 import datafog.engine
 from maskerade.privacy_types import PrivacySpan
 
@@ -26,7 +26,7 @@ def test_map_datafog_entity_to_privacy_span():
         confidence=0.9,
         engine="spacy"
     )
-    span = map_datafog_entity_to_privacy_span(entity_person)
+    span = _map_datafog_entity_to_privacy_span(entity_person)
     assert span is not None
     assert isinstance(span, PrivacySpan)
     assert span.entity_group == "private_person"
@@ -44,7 +44,7 @@ def test_map_datafog_entity_to_privacy_span():
         confidence=0.5,
         engine="spacy"
     )
-    assert map_datafog_entity_to_privacy_span(entity_org) is None
+    assert _map_datafog_entity_to_privacy_span(entity_org) is None
 
 def test_map_actual_scanned_entities():
     text = "Hello, Alice Smith! Your phone is 123-456-7890."

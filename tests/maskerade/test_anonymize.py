@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch
-from maskerade.anonymize import anonymize_text, merge_privacy_spans
+from maskerade.anonymize import anonymize_text, _merge_privacy_spans
 from maskerade.privacy_types import AnonymizerState, PrivacySpan, PrivacyToken
 
 def test_anonymize_stable_placeholders():
@@ -106,7 +106,7 @@ def test_merge_privacy_spans():
     # 1. Disjoint spans
     s1 = PrivacySpan(entity_group="private_person", start=7, end=18, score=0.9, word="Alice Smith")
     s2 = PrivacySpan(entity_group="private_phone", start=34, end=46, score=0.8, word="123-456-7890")
-    merged = merge_privacy_spans([s1], [s2], text)
+    merged = _merge_privacy_spans([s1], [s2], text)
     assert len(merged) == 2
     assert merged[0].word == "Alice Smith"
     assert merged[1].word == "123-456-7890"
@@ -115,7 +115,7 @@ def test_merge_privacy_spans():
     # s1: "Alice Smith" (7 to 18)
     # s3: "Alice" (7 to 12)
     s3 = PrivacySpan(entity_group="private_person", start=7, end=12, score=0.95, word="Alice")
-    merged = merge_privacy_spans([s1], [s3], text)
+    merged = _merge_privacy_spans([s1], [s3], text)
     assert len(merged) == 1
     assert merged[0].word == "Alice Smith"
     assert merged[0].start == 7
@@ -124,7 +124,7 @@ def test_merge_privacy_spans():
     # 3. Exact duplicates (deduplication)
     # s1 with score 0.9 vs s4 with score 0.99
     s4 = PrivacySpan(entity_group="private_person", start=7, end=18, score=0.99, word="Alice Smith")
-    merged = merge_privacy_spans([s1], [s4], text)
+    merged = _merge_privacy_spans([s1], [s4], text)
     assert len(merged) == 1
     assert merged[0].score == 0.99
 
@@ -133,7 +133,7 @@ def test_merge_privacy_spans():
     # s6: "Smith! Your" (13 to 24)
     s5 = PrivacySpan(entity_group="private_person", start=7, end=18, score=0.9, word="Alice Smith")
     s6 = PrivacySpan(entity_group="private_person", start=13, end=24, score=0.85, word="Smith! Your")
-    merged = merge_privacy_spans([s5], [s6], text)
+    merged = _merge_privacy_spans([s5], [s6], text)
     assert len(merged) == 1
     assert merged[0].start == 7
     assert merged[0].end == 24

@@ -43,6 +43,15 @@ def _get_model() -> FixedFCoref:
 
 
 def find_coref_clusters(text: str) -> list[list[str]]:
+    """
+    Finds coreference clusters in the input text.
+
+    Args:
+        text: The input text to analyze for coreferences.
+
+    Returns:
+        A list of coreference clusters, where each cluster is a list of mentions (strings).
+    """
     model = _get_model()
     preds = model.predict(texts=[text])
     if preds:

@@ -7,6 +7,15 @@ classifier = pipeline(
 )
 
 def find_privacy_tokens(text: str) -> list[PrivacyToken]:
+    """
+    Classifies the input text using HuggingFace's openai/privacy-filter pipeline to detect privacy tokens.
+
+    Args:
+        text: The input text to classify.
+
+    Returns:
+        A list of PrivacyToken objects representing the detected privacy tokens.
+    """
     if not text.strip():
         return []
 

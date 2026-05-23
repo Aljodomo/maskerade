@@ -26,6 +26,12 @@ def spacy_scan_text(text: str) -> list[PrivacySpan]:
     """
     Annotates the input text using Datafog's scan_prompt (with spacy engine) and returns
     the entities as PrivacySpan objects.
+
+    Args:
+        text: The text to scan for PII/privacy-sensitive entities.
+
+    Returns:
+        A list of PrivacySpan objects containing the detected entities.
     """
     if not text.strip():
         return []
@@ -33,14 +39,13 @@ def spacy_scan_text(text: str) -> list[PrivacySpan]:
     results = datafog.scan_prompt(text, engine="spacy")
     spans = []
     for entity in results.entities:
-        span = map_datafog_entity_to_privacy_span(entity)
+        span = _map_datafog_entity_to_privacy_span(entity)
         if span is not None:
             spans.append(span)
     return spans
 
 
-
-def map_datafog_entity_to_privacy_span(
+def _map_datafog_entity_to_privacy_span(
     entity: datafog.engine.Entity,
 ) -> PrivacySpan | None:
     """
@@ -58,5 +63,6 @@ def map_datafog_entity_to_privacy_span(
         score=entity.confidence,
         word=entity.text,
     )
+
 
 

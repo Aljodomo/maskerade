@@ -1,5 +1,5 @@
 
-from maskerade.datafog_spacy import spacy_scan_text, map_datafog_entity_to_privacy_span
+from maskerade.datafog_spacy import spacy_scan_text
 from torch.backends.quantized import engine
 from maskerade.coref import find_coref_clusters
 from maskerade.privacy_filter import find_privacy_tokens
@@ -7,7 +7,7 @@ import pprint
 from copy import copy
 from maskerade.privacy_types import PrivacySpan, PrivacyToken, AnonymizerState
 
-def merge_adjacent_privacy_tokens(tokens: list[PrivacyToken]) -> list[PrivacySpan]:
+def _merge_adjacent_privacy_tokens(tokens: list[PrivacyToken]) -> list[PrivacySpan]:
     def merge(t1: PrivacyToken, t2: PrivacyToken) -> PrivacyToken:
         return PrivacyToken(
             word=t1.word + t2.word,
@@ -17,17 +17,17 @@ def merge_adjacent_privacy_tokens(tokens: list[PrivacyToken]) -> list[PrivacySpa
             entity=t1.entity
         )
 
-    def cleanSpanIdx(span: PrivacySpan) -> PrivacySpan:
-        spanClone = copy(span)
-        if (spanClone.word.startswith(" ")):
-            spanClone.word = spanClone.word[1:]
-            spanClone.start += 1
-        if (spanClone.word.endswith(" ")):
-            spanClone.word = spanClone.word[:-1]
-            spanClone.end -= 1
-        return spanClone
+    def clean_span_idx(span: PrivacySpan) -> PrivacySpan:
+        span_clone = copy(span)
+        if (span_clone.word.startswith(" ")):
+            span_clone.word = span_clone.word[1:]
+            span_clone.start += 1
+        if (span_clone.word.endswith(" ")):
+            span_clone.word = span_clone.word[:-1]
+            span_clone.end -= 1
+        return span_clone
 
-    def toPrivacySpan(t: PrivacyToken) -> PrivacySpan:
+    def to_privacy_span(t: PrivacyToken) -> PrivacySpan:
         return PrivacySpan(
             entity_group=t.entity.split("-")[1], 
             start=t.start, end=t.end, score=t.score, word=t.word)
@@ -44,20 +44,20 @@ def merge_adjacent_privacy_tokens(tokens: list[PrivacyToken]) -> list[PrivacySpa
             current_token = token
     merged.append(current_token)
 
-    return [cleanSpanIdx(toPrivacySpan(span)) for span in merged]
+    return [clean_span_idx(to_privacy_span(span)) for span in merged]
 
-def group_privacy_tokens_by_coref_clusters(
-    privacySpans: list[PrivacySpan],
-    corefClusters: list[list[str]]
+def _group_privacy_tokens_by_coref_clusters(
+    privacy_spans: list[PrivacySpan],
+    coref_clusters: list[list[str]]
 ) -> list[tuple[list[PrivacySpan], list[str]]]:
-    groups: list[list[PrivacySpan]] = [[] for _ in corefClusters]
+    groups: list[list[PrivacySpan]] = [[] for _ in coref_clusters]
     unclustered_groups: list[tuple[list[PrivacySpan], list[str]]] = []
 
-    for span in privacySpans:
+    for span in privacy_spans:
         # find cluster for span
         cluster_id: int = -1
         cluster_count: int = 0
-        for cluster_idx, cluster in enumerate(corefClusters):
+        for cluster_idx, cluster in enumerate(coref_clusters):
             if span.word in cluster:
                 cluster_id = cluster_idx
                 cluster_count += 1
@@ -72,16 +72,16 @@ def group_privacy_tokens_by_coref_clusters(
     combined = []
     for idx, group in enumerate(groups):
         if group:
-            combined.append((group, corefClusters[idx]))
+            combined.append((group, coref_clusters[idx]))
     for group, cluster in unclustered_groups:
         combined.append((group, cluster))
 
     return combined
 
-def wrap_placeholder(placeholder_value: str) -> str:
+def _wrap_placeholder(placeholder_value: str) -> str:
     return f"[{placeholder_value}]"
 
-def assign_placeholders(
+def _assign_placeholders(
     groups_with_clusters: list[tuple[list[PrivacySpan], list[str]]],
     state: AnonymizerState
 ) -> list[tuple[PrivacySpan, str]]:
@@ -139,14 +139,14 @@ def assign_placeholders(
 
     return placeholders
 
-def insert_placeholders(text: str, placeholders: list[tuple[PrivacySpan, str]]) -> str:
+def _insert_placeholders(text: str, placeholders: list[tuple[PrivacySpan, str]]) -> str:
     new_text: str = text
     # in reverse order of span end index
     for span, placeholder in sorted(placeholders, key=lambda x: x[0].end, reverse=True):
-        new_text = new_text[:span.start] + wrap_placeholder(placeholder) + new_text[span.end:]
+        new_text = new_text[:span.start] + _wrap_placeholder(placeholder) + new_text[span.end:]
     return new_text
 
-def merge_privacy_spans(spans1: list[PrivacySpan], spans2: list[PrivacySpan], text: str) -> list[PrivacySpan]:
+def _merge_privacy_spans(spans1: list[PrivacySpan], spans2: list[PrivacySpan], text: str) -> list[PrivacySpan]:
     """
     Merges two lists of PrivacySpan objects. Resolves overlaps and subsets.
     """
@@ -206,31 +206,53 @@ def merge_privacy_spans(spans1: list[PrivacySpan], spans2: list[PrivacySpan], te
 
 
 def anonymize_text(text: str, history: str = "", state: AnonymizerState = None) -> tuple[str, AnonymizerState]:
+    """
+    Anonymizes the input text by detecting PII/sensitive entities using dual NER detection,
+    resolving coreference, and replacing identified entities with stable placeholders.
+
+    Args:
+        text: The input text to anonymize.
+        history: The history of previous messages (used for coreference resolution).
+        state: The current AnonymizerState tracking stable placeholders across turns.
+
+    Returns:
+        A tuple of (anonymized_text, updated_state).
+    """
     if state is None:
         state = AnonymizerState()
 
-    privacyTokens = find_privacy_tokens(text)
+    privacy_tokens = find_privacy_tokens(text)
     
-    openai_spans = merge_adjacent_privacy_tokens(privacyTokens)
+    openai_spans = _merge_adjacent_privacy_tokens(privacy_tokens)
     
     spacy_spans = spacy_scan_text(text)
     
-    privacySpans = merge_privacy_spans(openai_spans, spacy_spans, text)
+    privacy_spans = _merge_privacy_spans(openai_spans, spacy_spans, text)
     
-    corefClusters = find_coref_clusters(f"{history}\n{text}")
+    coref_clusters = find_coref_clusters(f"{history}\n{text}")
     
-    spanCorefGroups = group_privacy_tokens_by_coref_clusters(privacySpans, corefClusters)
+    span_coref_groups = _group_privacy_tokens_by_coref_clusters(privacy_spans, coref_clusters)
     
-    placeholders = assign_placeholders(spanCorefGroups, state)
+    placeholders = _assign_placeholders(span_coref_groups, state)
 
-    anonymized_text = insert_placeholders(text, placeholders)
+    anonymized_text = _insert_placeholders(text, placeholders)
 
     return anonymized_text, state
 
 def deanonymize_text(text: str, placeholder_values: dict[str, str]) -> str:
+    """
+    Restores the original values back into the anonymized text using the assigned placeholders.
+
+    Args:
+        text: The anonymized text containing placeholders.
+        placeholder_values: A dictionary mapping placeholders to their original values.
+
+    Returns:
+        The de-anonymized text with original values restored.
+    """
     new_text = text
     for key, value in placeholder_values.items():
-        placeholder = wrap_placeholder(key)
+        placeholder = _wrap_placeholder(key)
         new_text = new_text.replace(placeholder, value)
     return new_text
     

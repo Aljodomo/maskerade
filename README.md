@@ -93,7 +93,7 @@ A simple reverse lookup replaces every `[placeholder]` in the AI's response with
 
 ```
 src/maskerade/
-├── demo.py              # Chainlit app entry point — orchestrates the 3-step pipeline
+├── app.py               # Chainlit app entry point — orchestrates the 3-step pipeline
 ├── anonymize.py         # Core anonymisation & de-anonymisation logic (incl. span merging)
 ├── privacy_filter.py    # Primary NER: HuggingFace token-classification (OpenAI privacy-filter)
 ├── datafog_spacy.py     # Secondary NER: Datafog's spaCy engine + entity-to-PrivacySpan mapping
@@ -120,7 +120,7 @@ src/maskerade/
 ```bash
 uv venv --seed
 uv sync
-uv run chainlit run src/maskerade/demo.py -w
+uv run chainlit run src/maskerade/app.py -w
 ```
 
 Requires a `DEEPSEEK_API_KEY` in a `.env` file.

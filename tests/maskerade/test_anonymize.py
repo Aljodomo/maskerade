@@ -1,9 +1,10 @@
 import pytest
 from unittest.mock import patch
-from maskerade.anonymize import anonymize_text, _merge_privacy_spans
-from maskerade.privacy_types import AnonymizerState, PrivacySpan, PrivacyToken
+from maskerade import anonymize, deanonymize, AnonymizerState
+from maskerade.anonymize import _merge_privacy_spans
+from maskerade.privacy_types import PrivacySpan, PrivacyToken
 
-def test_anonymize_stable_placeholders():
+def test_anonymize_stable_placeholders() -> None:
     state = AnonymizerState()
 
     # Define mock behaviors for message 1
@@ -21,7 +22,7 @@ def test_anonymize_stable_placeholders():
          patch("maskerade.anonymize.spacy_scan_text", return_value=[]):
         
         text1 = "Hello, my name is Alice Smith."
-        anonymized1, state = anonymize_text(text1, history="", state=state)
+        anonymized1, state = anonymize(text1, context="", state=state)
 
         assert anonymized1 == "Hello, my name is [private_person-0-a]."
         assert state.private_values["private_person-0-a"] == "Alice Smith"
@@ -46,7 +47,7 @@ def test_anonymize_stable_placeholders():
          patch("maskerade.anonymize.spacy_scan_text", return_value=[]):
         
         text2 = "How can we reach Ms. Smith in Berlin?"
-        anonymized2, state = anonymize_text(text2, history="...", state=state)
+        anonymized2, state = anonymize(text2, context="...", state=state)
 
         # Ms. Smith is private_person (stable cluster 0, unique word suffix 'b')
         # Berlin is private_address (stable cluster 0, unique word suffix 'a')
@@ -60,12 +61,12 @@ def test_anonymize_stable_placeholders():
 
 
 @pytest.mark.skip(reason="Disabled due to unstable coreference resolution dependency across different environments")
-def test_anonymize_unmocked():
+def test_anonymize_unmocked() -> None:
     state = AnonymizerState()
 
     # Message 1: Alice Smith lives in Berlin.
     text1 = "Alice Smith lives in Berlin."
-    anonymized1, state = anonymize_text(text1, history="", state=state)
+    anonymized1, state = anonymize(text1, context="", state=state)
     
     # Find placeholder for Alice Smith (should be private_person-0-a)
     placeholder_alice = next((k for k, v in state.private_values.items() if v == "Alice Smith"), None)
@@ -74,7 +75,7 @@ def test_anonymize_unmocked():
     # Message 2: She prefers to be called Ms. Smith.
     text2 = "She prefers to be called Ms. Smith."
     history2 = f"{text1}"
-    anonymized2, state = anonymize_text(text2, history=history2, state=state)
+    anonymized2, state = anonymize(text2, context=history2, state=state)
 
     # Find placeholder for Ms. Smith
     placeholder_ms_smith = next((k for k, v in state.private_values.items() if v == "Ms. Smith"), None)
@@ -83,10 +84,10 @@ def test_anonymize_unmocked():
     assert placeholder_ms_smith == "private_person-0-b"
 
 
-def test_anonymize_single_message_integration():
+def test_anonymize_single_message_integration() -> None:
     state = AnonymizerState()
     text = "Alice Smith lives in Berlin."
-    anonymized, state = anonymize_text(text, history="", state=state)
+    anonymized, state = anonymize(text, context="", state=state)
     
     # Find placeholder for Alice Smith (should be private_person-0-a)
     placeholder_alice = next((k for k, v in state.private_values.items() if v == "Alice Smith"), None)
@@ -100,7 +101,7 @@ def test_anonymize_single_message_integration():
     assert anonymized == f"[{placeholder_alice}] lives in [{placeholder_berlin}]."
 
 
-def test_merge_privacy_spans():
+def test_merge_privacy_spans() -> None:
     text = "Hello, Alice Smith! Your phone is 123-456-7890."
     
     # 1. Disjoint spans
@@ -139,5 +140,25 @@ def test_merge_privacy_spans():
     assert merged[0].end == 24
     assert merged[0].word == "Alice Smith! Your"
     assert merged[0].score == 0.9
+
+
+def test_public_api_exports() -> None:
+    assert callable(anonymize)
+    assert callable(deanonymize)
+    assert AnonymizerState is not None
+
+
+def test_deanonymize() -> None:
+    state = AnonymizerState(
+        private_values={
+            "private_person-0-a": "Alice",
+            "private_email-0-a": "alice@example.com",
+        }
+    )
+    text = "Hello [private_person-0-a], your email is [private_email-0-a]."
+    result = deanonymize(text, state)
+    assert result == "Hello Alice, your email is alice@example.com."
+
+
 
 

@@ -5,13 +5,9 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
-    "chainlit>=2.11.1",
     "datafog[all]>=4.4.0",
     "fastcoref>=2.1.6",
-    "langchain-deepseek>=1.0.1",
-    "langgraph>=1.2.0",
     "pydantic>=2.13.4",
-    "python-dotenv>=1.2.2",
     "torch>=2.6.0",
     "transformers>=5.8.1",
 ]

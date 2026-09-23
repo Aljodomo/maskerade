@@ -1,0 +1,3 @@
+# Transition from Chat Proxy to Standalone Anonymisation Library
+
+Maskerade was initially structured as a Chainlit-driven chat proxy that intercepted user messages, anonymised them, forwarded them to DeepSeek LLM, and de-anonymised the output. We decided to extract Maskerade into a standalone library exporting only synchronous `anonymize` and `deanonymize` functions and drop all LLM and UI framework dependencies (`chainlit`, `langchain`, `langgraph`). This removes UI and remote model coupling, allowing other projects and services to integrate privacy anonymisation directly into their own pipelines.

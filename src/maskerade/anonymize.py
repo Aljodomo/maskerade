@@ -7,6 +7,58 @@ import pprint
 from copy import copy
 from maskerade.privacy_types import PrivacySpan, PrivacyToken, AnonymizerState
 
+
+def anonymize(text: str, context: str = "", state: AnonymizerState | None = None) -> tuple[str, AnonymizerState]:
+    """
+    Anonymizes the input text by detecting PII/sensitive entities using dual NER detection,
+    resolving coreference, and replacing identified entities with stable placeholders.
+
+    Args:
+        text: The input text to anonymize.
+        context: The history of previous messages (used for coreference resolution).
+        state: The current AnonymizerState tracking stable placeholders across turns.
+
+    Returns:
+        A tuple of (anonymized_text, updated_state).
+    """
+    if state is None:
+        state = AnonymizerState()
+
+    privacy_tokens = find_privacy_tokens(text)
+    
+    openai_spans = _merge_adjacent_privacy_tokens(privacy_tokens)
+    
+    spacy_spans = spacy_scan_text(text)
+    
+    privacy_spans = _merge_privacy_spans(openai_spans, spacy_spans, text)
+    
+    coref_clusters = find_coref_clusters(f"{context}\n{text}")
+    
+    span_coref_groups = _group_privacy_tokens_by_coref_clusters(privacy_spans, coref_clusters)
+    
+    placeholders = _assign_placeholders(span_coref_groups, state)
+
+    anonymized_text = _insert_placeholders(text, placeholders)
+
+    return anonymized_text, state
+
+def deanonymize(text: str, state: AnonymizerState) -> str:
+    """
+    Restores the original values back into the anonymized text using the assigned placeholders.
+
+    Args:
+        text: The anonymized text containing placeholders.
+        state: The AnonymizerState containing tracked private values.
+
+    Returns:
+        The de-anonymized text with original values restored.
+    """
+    new_text = text
+    for key, value in state.private_values.items():
+        placeholder = _wrap_placeholder(key)
+        new_text = new_text.replace(placeholder, value)
+    return new_text
+
 def _merge_adjacent_privacy_tokens(tokens: list[PrivacyToken]) -> list[PrivacySpan]:
     def merge(t1: PrivacyToken, t2: PrivacyToken) -> PrivacyToken:
         return PrivacyToken(
@@ -54,7 +106,6 @@ def _group_privacy_tokens_by_coref_clusters(
     unclustered_groups: list[tuple[list[PrivacySpan], list[str]]] = []
 
     for span in privacy_spans:
-        # find cluster for span
         cluster_id: int = -1
         cluster_count: int = 0
         for cluster_idx, cluster in enumerate(coref_clusters):
@@ -63,7 +114,6 @@ def _group_privacy_tokens_by_coref_clusters(
                 cluster_count += 1
         if(cluster_count > 1):
             raise ValueError(f"Span {span.word} appears in multiple coreference clusters")
-        # add to cluster group or create new group
         if(cluster_id == -1):
             unclustered_groups.append(([span], [span.word]))
         else:
@@ -93,14 +143,12 @@ def _assign_placeholders(
             continue
         entity_group = group[0].entity_group
 
-        # Check if any word in the coref cluster already has a stable cluster_id
         cluster_id = -1
         for word in cluster:
             if word in state.word_to_cluster_id:
                 cluster_id = state.word_to_cluster_id[word]
                 break
 
-        # If not, allocate a new cluster_id for this entity group
         if cluster_id == -1:
             cluster_id = state.next_cluster_ids.get(entity_group, 0)
             state.next_cluster_ids[entity_group] = cluster_id + 1
@@ -109,11 +157,9 @@ def _assign_placeholders(
         if cluster_key not in state.cluster_to_words:
             state.cluster_to_words[cluster_key] = []
 
-        # Populate word_to_cluster_id for all words in the coreference cluster
         for word in cluster:
             state.word_to_cluster_id[word] = cluster_id
 
-        # Assign placeholders for all spans in the current group
         for span in group:
             existing_placeholder = None
             for p, w in state.private_values.items():
@@ -141,7 +187,6 @@ def _assign_placeholders(
 
 def _insert_placeholders(text: str, placeholders: list[tuple[PrivacySpan, str]]) -> str:
     new_text: str = text
-    # in reverse order of span end index
     for span, placeholder in sorted(placeholders, key=lambda x: x[0].end, reverse=True):
         new_text = new_text[:span.start] + _wrap_placeholder(placeholder) + new_text[span.end:]
     return new_text
@@ -154,9 +199,7 @@ def _merge_privacy_spans(spans1: list[PrivacySpan], spans2: list[PrivacySpan], t
     if not all_spans:
         return []
 
-    # Sort primarily by start index ascending.
-    # In case of tie, sort by end index descending so that the larger span comes first.
-    # If both start and end are equal, sort by score descending.
+    # Order enclosing spans before subsets to allow single-pass merging
     all_spans.sort(key=lambda s: (s.start, -s.end, -s.score))
 
     merged: list[PrivacySpan] = []
@@ -169,27 +212,22 @@ def _merge_privacy_spans(spans1: list[PrivacySpan], spans2: list[PrivacySpan], t
         prev = merged[-1]
         
         # Case 1: Enclosed (subset) span
-        # If current span is fully inside the previous span
         if span.start >= prev.start and span.end <= prev.end:
-            # Skip the current span, because the larger span fully covers it
             continue
             
         # Case 2: Overlapping spans
         elif span.start < prev.end:
-            # They overlap partially. We merge them into a single span.
             new_start = prev.start
             new_end = max(prev.end, span.end)
             new_score = max(prev.score, span.score)
             new_word = text[new_start:new_end]
             
-            # For category, keep the one with the higher score.
-            # If scores are equal, fallback to the previous category.
+            # Prefer category from the higher-confidence detector
             if span.score > prev.score:
                 new_category = span.entity_group
             else:
                 new_category = prev.entity_group
                 
-            # Replace the last element in merged with the unified span
             merged[-1] = PrivacySpan(
                 entity_group=new_category,
                 start=new_start,
@@ -205,55 +243,5 @@ def _merge_privacy_spans(spans1: list[PrivacySpan], spans2: list[PrivacySpan], t
     return merged
 
 
-def anonymize_text(text: str, history: str = "", state: AnonymizerState = None) -> tuple[str, AnonymizerState]:
-    """
-    Anonymizes the input text by detecting PII/sensitive entities using dual NER detection,
-    resolving coreference, and replacing identified entities with stable placeholders.
 
-    Args:
-        text: The input text to anonymize.
-        history: The history of previous messages (used for coreference resolution).
-        state: The current AnonymizerState tracking stable placeholders across turns.
-
-    Returns:
-        A tuple of (anonymized_text, updated_state).
-    """
-    if state is None:
-        state = AnonymizerState()
-
-    privacy_tokens = find_privacy_tokens(text)
-    
-    openai_spans = _merge_adjacent_privacy_tokens(privacy_tokens)
-    
-    spacy_spans = spacy_scan_text(text)
-    
-    privacy_spans = _merge_privacy_spans(openai_spans, spacy_spans, text)
-    
-    coref_clusters = find_coref_clusters(f"{history}\n{text}")
-    
-    span_coref_groups = _group_privacy_tokens_by_coref_clusters(privacy_spans, coref_clusters)
-    
-    placeholders = _assign_placeholders(span_coref_groups, state)
-
-    anonymized_text = _insert_placeholders(text, placeholders)
-
-    return anonymized_text, state
-
-def deanonymize_text(text: str, placeholder_values: dict[str, str]) -> str:
-    """
-    Restores the original values back into the anonymized text using the assigned placeholders.
-
-    Args:
-        text: The anonymized text containing placeholders.
-        placeholder_values: A dictionary mapping placeholders to their original values.
-
-    Returns:
-        The de-anonymized text with original values restored.
-    """
-    new_text = text
-    for key, value in placeholder_values.items():
-        placeholder = _wrap_placeholder(key)
-        new_text = new_text.replace(placeholder, value)
-    return new_text
-    
     

@@ -1,7 +1,7 @@
 [project]
 name = "maskerade"
 version = "0.1.0"
-description = "Add your description here"
+description = "Privacy-preserving text anonymisation library designed for LLM pipelines and privacy-sensitive workflows"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

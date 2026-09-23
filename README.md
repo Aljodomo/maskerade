@@ -1,78 +1,68 @@
-# Maskerade — Privacy-Preserving Anonymisation Library
+# Maskerade
 
-Maskerade is a Python library that scrubs Personally Identifiable Information (PII) from text before sending it to an LLM, and restores the original values in the LLM's response.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-The remote AI never sees real names, addresses, phone numbers, or any other sensitive data — only deterministic placeholders like `[private_person-0-a]`.
-
----
+**Maskerade** is a high-precision text anonymisation library designed for LLM pipelines and privacy-sensitive workflows. It prioritizes detection accuracy and coreference fidelity over raw speed, combining transformer-based token classification (`openai/privacy-filter`), spaCy entity recognition, and neural coreference clustering (`fastcoref`) to replace sensitive entities with deterministic placeholders (e.g. `[private_person-0-a]`) and restore original values in downstream responses.
 
 ## Installation
 
 ```bash
 uv add maskerade
+# or
+pip install maskerade
 ```
 
----
-
-## Usage
+## Quickstart
 
 ```python
 from maskerade import anonymize, deanonymize, AnonymizerState
 
-# Initialize conversation state
 state = AnonymizerState()
 
-# Anonymize input text
-anonymized_text, state = anonymize("Hello, my name is Alice Smith.", state=state)
-print(anonymized_text)
-# "Hello, my name is [private_person-0-a]."
+# 1. Anonymize user input
+text = "Alice Smith lives in Berlin. You can email her at alice@example.com."
+anonymized, state = anonymize(text, state=state)
+print(anonymized)
+# "[private_person-0-a] lives in [private_address-0-a]. You can email her at [private_email-0-a]."
 
-# Multi-turn conversation with previous context for coreference resolution
-context = "Hello, my name is Alice Smith."
-second_turn, state = anonymize("She lives in Berlin.", context=context, state=state)
-print(second_turn)
-# "[private_person-0-b] lives in [private_address-0-a]."
+# 2. Multi-turn context resolution
+turn_2 = "Ms. Smith said she will reply today."
+anonymized_2, state = anonymize(turn_2, context=text, state=state)
+print(anonymized_2)
+# "[private_person-0-b] said she will reply today."
 
-# Restore placeholders from LLM response
-llm_reply = "Nice to meet you, [private_person-0-a]! How is [private_address-0-a]?"
-restored_reply = deanonymize(llm_reply, state)
-print(restored_reply)
-# "Nice to meet you, Alice Smith! How is Berlin?"
+# 3. Restore original values from downstream reply
+response = "Sent email to [private_email-0-a] for [private_person-0-a]."
+print(deanonymize(response, state))
+# "Sent email to alice@example.com for Alice Smith."
 ```
 
----
+## Supported Categories
 
-## Public API
+| Category | Identifier | Examples |
+| :--- | :--- | :--- |
+| **Persons** | `private_person` | Names, aliases, titles |
+| **Addresses & Locations** | `private_address` | Cities, street addresses, countries |
+| **Email Addresses** | `private_email` | Personal and business emails |
+| **Phone Numbers** | `private_phone` | Telephone and mobile numbers |
+| **URLs & IPs** | `private_url` | Domains, URLs, IP addresses |
+| **Dates & Times** | `private_date` | Dates of birth, timestamps |
+| **Accounts & IDs** | `account_number` | Bank accounts, SSNs, credit cards |
+| **Secrets & Keys** | `secret` | API tokens, passwords, private keys |
 
-### `anonymize(text: str, context: str = "", state: AnonymizerState | None = None) -> tuple[str, AnonymizerState]`
+## API Reference
 
-Detects sensitive spans using dual-NER (OpenAI privacy-filter + spaCy), resolves coreferences across context, and replaces sensitive entities with stable placeholders.
+- **`anonymize(text: str, context: str = "", state: AnonymizerState | None = None) -> tuple[str, AnonymizerState]`**  
+  Scans text using dual NER and neural coreference clustering, substituting sensitive spans with deterministic placeholders.
+- **`deanonymize(text: str, state: AnonymizerState) -> str`**  
+  Restores original values in text containing placeholders.
+- **`AnonymizerState`**  
+  Pydantic model tracking entity clusters and placeholder mappings across conversation turns.
 
-- `text`: The string to anonymize.
-- `context`: Previous conversation text (used for cross-turn coreference resolution).
-- `state`: Active `AnonymizerState` instance tracking entity clusters and token mappings across turns.
-
-### `deanonymize(text: str, state: AnonymizerState) -> str`
-
-Restores the original values back into the anonymized text using the assigned placeholders from `state.private_values`.
-
-
----
-
-## Project Structure
-
-```
-src/maskerade/
-├── __init__.py          # Public package exports: anonymize, deanonymize, AnonymizerState
-├── anonymize.py         # Anonymisation and de-anonymisation core logic & span merging
-├── privacy_filter.py    # Primary NER: HuggingFace token classification (OpenAI privacy-filter)
-├── datafog_spacy.py     # Secondary NER: Datafog's spaCy engine
-├── privacy_types.py     # Pydantic data models: PrivacyToken, PrivacySpan, AnonymizerState
-└── coref.py             # Coreference resolution (fastcoref)
-```
-
-## Running Tests
+## Development
 
 ```bash
+uv sync
 uv run pytest
 ```
